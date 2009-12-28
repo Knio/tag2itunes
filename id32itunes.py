@@ -1,8 +1,9 @@
 import sys
 import os
+import re
 import shutil
 import urllib
-import elementtree.ElementTree as et
+import elementtree.ElementTree as ET
 sys.path.append('./mutagen')
 from mutagen.id3 import ID3
 
@@ -24,11 +25,17 @@ def setdict(e, d, key, valtype, val):
   if key in d:
     d[key].text = val
   else:
-    SubElement(e, "key").text     = key
-    SubElement(e,  valtype).text  = val
+    ET.SubElement(e, "key").text     = key
+    ET.SubElement(e,  valtype).text  = val
     
     
-    
+def decode(s):
+  def f(m):
+    i = m.group(1)
+    try:    return unichr(int(i))
+    except: return i
+  return re.sub("&#(\d+)(;|(?=\s))", f, s)
+
     
 
 
@@ -40,35 +47,33 @@ class Syncer(object):
   
   def processtrack(self, e):
     d = parsedict(e)
-    filepath = urllib.unquote(d['Location'].text)
+    filepath = decode(urllib.unquote(d['Location'].text))
     
     #print ('\b'*80),
-    print ('Processing %s' % filepath),
+    print ('P: %s' % filepath[40:110])
     
     try:
       id3 = ID3(filepath.replace(*self.rootfolder))
     except:
-      print 'Failed to open ID3 tags'
+      print 'E: Failed to open ID3 tags'
       return
-
+      
     try:
-      rating = self.r2itunes[int(id3['TXXX:rating'].text)]
+      rating = self.r2itunes[int(id3['TXXX:rating'].text[0])]
       setdict(e, d, 'Rating', 'integer', str(rating))
-      print 'Rating = %s' % rating
-    except:
-      # no rating set
+      print '      Rating = %s' % rating
+    except KeyError:
       pass
     
     #      <key>Play Count</key><integer>1</integer>
     #      <key>Play Date</key><integer>3341475263</integer>
     #      <key>Play Date UTC</key><date>2009-11-19T18:34:23Z</date>
     try:
-      playcount = self.r2itunes[int(id3['TXXX:play_count'].text)]
+      playcount = int(id3['TXXX:play_count'].text[0])
       setdict(e, d, 'Play Count', 'integer', str(playcount))
-      print 'Play Count = %s' % playcount
-    except:
-      # no play count set
-      pass
+      print '      Play Count = %s' % playcount
+    except KeyError:
+      pass    
     
   def walklibrary(self, root):
     d = parsedict(root[0])
@@ -91,7 +96,7 @@ class Syncer(object):
     print 'Backing up library..'
     shutil.copy(self.library_name, self.library_name + '.bak')
     print 'Reading library..'
-    self.library = et.parse(self.library_name)
+    self.library = ET.parse(self.library_name)
     print 'Processing..'
     self.walklibrary(self.library.getroot())
     print 'Writing library..' 
